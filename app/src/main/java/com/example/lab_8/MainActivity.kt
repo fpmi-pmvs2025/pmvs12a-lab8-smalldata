@@ -11,92 +11,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import com.example.lab_8.model.TransactionModel
+import com.example.lab_8.repository.TransactionRepository
 import java.text.SimpleDateFormat
-import android.content.Context
-import androidx.compose.runtime.mutableStateListOf
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.util.*
-import androidx.room.*
 
-@Entity(tableName = "transactions")
-data class Transaction(
-    @PrimaryKey val id: String,
-    val description: String,
-    val amount: Double,
-    val isIncome: Boolean,
-    val date: Date,
-    val currency: String
-)
-
-@Dao
-interface TransactionDao {
-    @Query("SELECT * FROM transactions ORDER BY date DESC")
-    suspend fun getAll(): List<Transaction>
-
-    @Insert
-    suspend fun insert(transaction: Transaction)
-}
-
-class Converters {
-    @TypeConverter
-    fun fromTimestamp(value: Long?): Date? = value?.let { Date(it) }
-
-    @TypeConverter
-    fun dateToTimestamp(date: Date?): Long? = date?.time
-}
-
-@Database(entities = [Transaction::class], version = 2)
-@TypeConverters(Converters::class)
-abstract class AppDatabase : RoomDatabase() {
-    abstract fun transactionDao(): TransactionDao
-
-    companion object {
-        @Volatile private var INSTANCE: AppDatabase? = null
-
-        fun getInstance(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "expense_tracker.db"
-                )
-                    .build().also { INSTANCE = it }
-            }
-        }
-    }
-}
-
-class TransactionRepository(context: Context) {
-    private val dao = AppDatabase.getInstance(context).transactionDao()
-    private val _transactions = mutableStateListOf<Transaction>()
-    val transactions: List<Transaction> get() = _transactions
-
-    init {
-        CoroutineScope(Dispatchers.IO).launch {
-            val entities = dao.getAll()
-            _transactions.addAll(entities.map { it.toModel() })
-        }
-    }
-
-    fun addTransaction(description: String, amount: Double, isIncome: Boolean, currency: String) {
-        val tx = Transaction(UUID.randomUUID().toString(), description, amount, isIncome, Date(), currency)
-        _transactions.add(tx)
-        CoroutineScope(Dispatchers.IO).launch {
-            dao.insert(tx.toEntity())
-        }
-    }
-
-    private fun Transaction.toEntity() =
-        Transaction(id, description, amount, isIncome, date, currency)
-
-    private fun Transaction.toModel() =
-        Transaction(id, description, amount, isIncome, date, currency)
-}
-
-
-/** Main Activity **/
 class MainActivity : ComponentActivity() {
     private val repository by lazy { TransactionRepository(applicationContext) }
 
@@ -108,7 +27,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** UI **/
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpenseTrackerApp(repository: TransactionRepository) {
@@ -116,7 +34,7 @@ fun ExpenseTrackerApp(repository: TransactionRepository) {
     var amount by remember { mutableStateOf(TextFieldValue()) }
     var isIncome by remember { mutableStateOf(true) }
 
-    val transactions = repository.transactions
+    val transactions by repository.transactions.collectAsState()
 
     var expanded by remember { mutableStateOf(false) }
     val currencies = listOf("BYN", "RUB", "USD", "EUR", "USDT")
@@ -227,7 +145,7 @@ fun ExpenseTrackerApp(repository: TransactionRepository) {
 }
 
 @Composable
-fun TransactionRow(tx: Transaction) {
+fun TransactionRow(tx: TransactionModel) {
     val formatter = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
 
     Card(
@@ -250,10 +168,10 @@ fun TransactionRow(tx: Transaction) {
                     style = MaterialTheme.typography.titleMedium
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "Дата: ${formatter.format(tx.date)}",
-                style = MaterialTheme.typography.bodySmall
+                text = formatter.format(tx.date),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
             )
         }
     }
