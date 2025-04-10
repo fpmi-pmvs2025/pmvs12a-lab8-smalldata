@@ -32,6 +32,14 @@ class TransactionRepository(context: Context) {
         }
     }
 
+    fun deleteTransaction(id: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            dao.delete(id)
+            val updatedList = dao.getAll().map { it.toModel() }
+            _transactions.value = updatedList
+        }
+    }
+
     private fun TransactionEntity.toModel() =
         TransactionModel(id, description, amount, isIncome, date, currency)
 } 

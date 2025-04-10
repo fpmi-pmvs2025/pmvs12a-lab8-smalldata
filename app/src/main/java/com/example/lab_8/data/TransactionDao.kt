@@ -11,4 +11,7 @@ interface TransactionDao {
 
     @Insert
     suspend fun insert(transaction: TransactionEntity)
+
+    @Query("DELETE FROM transactions WHERE id = :id")
+    suspend fun delete(id: String)
 } 
