@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,16 +34,31 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+enum class FilterType { ALL, INCOME, EXPENSE }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpenseTrackerApp(repository: TransactionRepository) {
     var currentScreen by remember { mutableStateOf("transactions") }
+    var isDarkTheme by remember { mutableStateOf(false) }
     val transactions by repository.transactions.collectAsState()
 
-    MaterialTheme {
+    MaterialTheme(
+        colorScheme = if (isDarkTheme) darkColorScheme() else lightColorScheme()
+    ) {
         Scaffold(
             topBar = {
-                CenterAlignedTopAppBar(title = { Text("Учёт доходов и расходов") })
+                CenterAlignedTopAppBar(
+                    title = { Text("Учёт доходов и расходов") },
+                    actions = {
+                        IconButton(onClick = { isDarkTheme = !isDarkTheme }) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = if (isDarkTheme) "Светлая тема" else "Тёмная тема"
+                            )
+                        }
+                    }
+                )
             },
             bottomBar = {
                 NavigationBar {
@@ -82,12 +98,19 @@ fun TransactionsScreen(repository: TransactionRepository, padding: PaddingValues
     val currencies = listOf("BYN", "RUB", "USD", "EUR", "USDT")
     var selectedCurrency by remember { mutableStateOf(currencies.first()) }
 
+    var filterType by remember { mutableStateOf(FilterType.ALL) }
+
+    val filteredTransactions = when (filterType) {
+        FilterType.ALL -> transactions
+        FilterType.INCOME -> transactions.filter { it.isIncome }
+        FilterType.EXPENSE -> transactions.filter { !it.isIncome }
+    }
+
     Column(
         modifier = Modifier
             .padding(padding)
             .padding(16.dp)
     ) {
-        // Выбор валюты
         ExposedDropdownMenuBox(
             expanded = expanded,
             onExpandedChange = { expanded = !expanded }
@@ -138,23 +161,29 @@ fun TransactionsScreen(repository: TransactionRepository, padding: PaddingValues
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Row {
-            Text("Тип:")
-            Spacer(modifier = Modifier.width(8.dp))
-            FilterChip(
-                selected = isIncome,
-                onClick = { isIncome = true },
-                label = { Text("Доход") }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            FilterChip(
-                selected = !isIncome,
-                onClick = { isIncome = false },
-                label = { Text("Расход") }
-            )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Text("Тип:")
+                Spacer(modifier = Modifier.width(8.dp))
+                FilterChip(
+                    selected = isIncome,
+                    onClick = { isIncome = true },
+                    label = { Text("Доход") }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                FilterChip(
+                    selected = !isIncome,
+                    onClick = { isIncome = false },
+                    label = { Text("Расход") }
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Button(onClick = {
             val amt = amount.text.toDoubleOrNull() ?: 0.0
@@ -167,10 +196,37 @@ fun TransactionsScreen(repository: TransactionRepository, padding: PaddingValues
             Text("Добавить")
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Фильтр транзакций
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+        ) {
+            FilterChip(
+                selected = filterType == FilterType.ALL,
+                onClick = { filterType = FilterType.ALL },
+                label = { Text("Все") },
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            FilterChip(
+                selected = filterType == FilterType.INCOME,
+                onClick = { filterType = FilterType.INCOME },
+                label = { Text("Доходы") },
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            FilterChip(
+                selected = filterType == FilterType.EXPENSE,
+                onClick = { filterType = FilterType.EXPENSE },
+                label = { Text("Расходы") },
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
 
         LazyColumn {
-            items(transactions) { tx ->
+            items(filteredTransactions) { tx ->
                 TransactionRow(tx) {
                     transactionToDelete = tx
                 }
@@ -178,7 +234,6 @@ fun TransactionsScreen(repository: TransactionRepository, padding: PaddingValues
         }
     }
 
-    // Диалог подтверждения удаления
     if (transactionToDelete != null) {
         AlertDialog(
             onDismissRequest = { transactionToDelete = null },
