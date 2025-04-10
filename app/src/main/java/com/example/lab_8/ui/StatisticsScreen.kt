@@ -1,8 +1,10 @@
 package com.example.lab_8.ui
 
+import android.graphics.Color
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -11,13 +13,40 @@ import com.github.mikephil.charting.charts.PieChart
 import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.NumberFormat
 import java.util.*
 
 @Composable
 fun StatisticsScreen(transactions: List<TransactionModel>) {
-    val income = transactions.filter { it.isIncome }.sumOf { it.amount }
-    val expenses = transactions.filter { !it.isIncome }.sumOf { it.amount }
+    var exchangeRates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        exchangeRates = fetchExchangeRates()
+        isLoading = false
+    }
+
+    if (isLoading) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    val transactionsInUsd = transactions.mapNotNull { transaction ->
+        val rate = exchangeRates[transaction.currency.uppercase()]
+        rate?.let {
+            transaction.copy(amount = transaction.amount / it)
+        }
+    }
+
+    val income = transactionsInUsd.filter { it.isIncome }.sumOf { it.amount }
+    val expenses = transactionsInUsd.filter { !it.isIncome }.sumOf { it.amount }
     val balance = income - expenses
 
     Column(
@@ -25,7 +54,6 @@ fun StatisticsScreen(transactions: List<TransactionModel>) {
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // Общая статистика
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -36,9 +64,11 @@ fun StatisticsScreen(transactions: List<TransactionModel>) {
                 modifier = Modifier.padding(16.dp)
             ) {
                 Text(
-                    text = "Общая статистика",
+                    text = "Общая статистика (в USD)",
                     style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(bottom = 8.dp).padding(top = 8.dp)
+                    modifier = Modifier
+                        .padding(bottom = 8.dp)
+                        .padding(top = 8.dp)
                 )
                 StatisticRow("Доходы", income)
                 StatisticRow("Расходы", expenses)
@@ -46,7 +76,6 @@ fun StatisticsScreen(transactions: List<TransactionModel>) {
             }
         }
 
-        // Круговая диаграмма
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -56,8 +85,8 @@ fun StatisticsScreen(transactions: List<TransactionModel>) {
                 factory = { context ->
                     PieChart(context).apply {
                         description.isEnabled = false
-                        setHoleColor(android.graphics.Color.TRANSPARENT)
-                        setTransparentCircleColor(android.graphics.Color.TRANSPARENT)
+                        setHoleColor(Color.TRANSPARENT)
+                        setTransparentCircleColor(Color.TRANSPARENT)
                         setDrawHoleEnabled(true)
                         setHoleRadius(50f)
                         setTransparentCircleRadius(55f)
@@ -74,12 +103,9 @@ fun StatisticsScreen(transactions: List<TransactionModel>) {
                         PieEntry(expenses.toFloat(), "Расходы")
                     )
                     val dataSet = PieDataSet(entries, "").apply {
-                        colors = listOf(
-                            android.graphics.Color.GREEN,
-                            android.graphics.Color.RED
-                        )
+                        colors = listOf(Color.GREEN, Color.RED)
                         valueTextSize = 12f
-                        valueTextColor = android.graphics.Color.WHITE
+                        valueTextColor = Color.WHITE
                     }
                     chart.data = PieData(dataSet)
                     chart.invalidate()
@@ -91,8 +117,8 @@ fun StatisticsScreen(transactions: List<TransactionModel>) {
 
 @Composable
 fun StatisticRow(label: String, value: Double) {
-    val formatter = remember { NumberFormat.getCurrencyInstance(Locale.getDefault()) }
-    
+    val formatter = remember { NumberFormat.getCurrencyInstance(Locale.US) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -105,4 +131,26 @@ fun StatisticRow(label: String, value: Double) {
             style = MaterialTheme.typography.bodyLarge
         )
     }
-} 
+}
+
+suspend fun fetchExchangeRates(): Map<String, Double> {
+    return withContext(Dispatchers.IO) {
+        try {
+            val url = URL("https://open.er-api.com/v6/latest/USD")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            val data = connection.inputStream.bufferedReader().readText()
+            val json = JSONObject(data)
+            val ratesJson = json.getJSONObject("rates")
+
+            val rates = mutableMapOf<String, Double>()
+            for (key in ratesJson.keys()) {
+                rates[key] = ratesJson.getDouble(key)
+            }
+            rates["USDT"] = 1.0 // добавим USDT вручную
+            rates
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+}
