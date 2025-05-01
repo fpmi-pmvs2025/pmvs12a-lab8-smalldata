@@ -26,6 +26,11 @@
    - Перейдите в раздел "Статистика" для просмотра графиков по категориям.  
 
 **Скриншоты интерфейса**:  
+![image](https://github.com/user-attachments/assets/254cf9f9-13c8-42e1-b32c-f107d5b06acb)
+![image](https://github.com/user-attachments/assets/d655c9ac-f38b-4bf9-818c-2fc6818698b1)
+![image](https://github.com/user-attachments/assets/92ac3703-880d-4c3e-89e5-dddae837dcb0)
+
+
 
 ## 👥 Contributing  
 ### Авторы проекта:  
